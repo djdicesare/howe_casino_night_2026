@@ -9,9 +9,13 @@ import {
   X, 
   Crown, 
   Medal,
-  Trash2
+  Trash2,
+  History,
+  ChevronDown,
+  Minus,
+  Plus
 } from 'lucide-react';
-import { fetchGameLeaders, fetchChipLeader, fetchGames, fetchAuditTrail, fetchPlayers, fetchAdminGameResults, Player, GameLeader, Game, AuditTrail} from '@/lib/supabase/casino-service';
+import { fetchGameLeaders, fetchChipLeader, fetchGames, fetchAuditTrail, fetchPlayers, fetchAdminGameResults, deleteGameResult, addPlayerGameResult, Player, GameLeader, Game, AuditTrail, AdminGameResult} from '@/lib/supabase/casino-service';
 
 
 export default function App() {
@@ -22,12 +26,17 @@ export default function App() {
   const [gameLeaders, setGameLeaders] = useState<GameLeader[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [users, setUsers ] = useState<Player[]>([]);
+  const [adminGameResults, setAdminGameResults] = useState<AdminGameResult[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   //Admin form
   const [adminForm, setAdminForm] = useState({
+    playerName: '',
     playerId: '',
     gameId: '',
+    gameName: '',
     chipsChange: 0,
+    isLoss: false
   });
 
   const fetchData = async () => {
@@ -41,7 +50,9 @@ export default function App() {
         setGameLeaders(gameLeaders);
         setGames(games);
         setUsers(users);
-        console.log(chipLeaders, gameLeaders, games, users);
+        const adminGameResults = await fetchAdminGameResults();
+        setAdminGameResults(adminGameResults);
+        console.log(chipLeaders, gameLeaders, games, users, adminGameResults);
     } catch (error) {
         console.error("Error fetching data:", error);
     } finally {
@@ -71,9 +82,62 @@ export default function App() {
     }
   };
 
+  const handleDeleteResult = async (resultId: string) => {
+    if (!confirm("Are you sure you want to delete this transaction? This action cannot be undone.")) return;
+    try {
+      console.log('Deleting game result with ID:', resultId);
+      await deleteGameResult(resultId);
+    } catch (error) {
+      console.error("Error deleting game result:", error);
+      alert("Failed to delete transaction. Please try again.");
+    }
+    finally {
+      setAdminGameResults(prev => prev.filter(r => r.result_id !== resultId));
+      console.log('Deletion process completed for ID:', resultId);
+    }
+  }
+
   const simulateRefresh = () => {
     setLoading(true);
     setTimeout(() => setLoading(false), 800);
+  };
+
+  const handleAddGameResult = async (e: { preventDefault: () => void; }) => {
+    e.preventDefault();
+    const amount = adminForm.isLoss ? -Math.abs(adminForm.chipsChange) : Math.abs(adminForm.chipsChange);
+    setIsSubmitting(true);
+    console.log('Submitting new game result:', adminForm);
+    try {
+      await addPlayerGameResult(
+        adminForm.playerId,
+        Number(adminForm.gameId),
+        amount
+      );
+      alert("Transaction added successfully.");
+      fetchData();
+    } catch (error) {
+      console.error("Error adding game result:", error);
+      alert("Failed to add transaction. Please try again.");
+    }
+    finally {
+      setIsSubmitting(false);
+      setAdminForm({
+        playerName: '',
+        playerId: '',
+        gameId: '',
+        gameName: '',
+        chipsChange: 0,
+        isLoss: false,
+      });
+    }
+  };
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setAdminForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   return (
@@ -224,14 +288,134 @@ export default function App() {
               </button>
             </header>
             <div className="bg-[#111] border border-white/5 rounded-[2.5rem] p-8 space-y-6">
-               <p className="text-white/40 text-center italic text-sm">Database connection is offline for dummy mode.</p>
-               <button 
-                  disabled 
-                  className="w-full bg-white/5 border border-white/10 text-white/20 py-5 rounded-2xl font-bold text-lg"
-               >
-                 Insert Transaction
-               </button>
+              <h3 className="text-lg font-bold text-white/30 uppercase tracking-[0.2em]">Add Game Result</h3>
+              <form onSubmit={(e) => {handleAddGameResult(e)}} className="space-y-6">
+                  <div className="grid grid-cols-1 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-white/30 font-bold ml-2">Game Table</label>
+                      <div className="relative">
+                        <select 
+                          value={adminForm.gameId}
+                          onChange={(e) => setAdminForm({...adminForm, gameId: e.target.value})}
+                          className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-[#D4AF37]/50 transition-all appearance-none text-white/90"
+                        >
+                          <option value="" disabled>Select Game...</option>
+                          {games.map(game => <option key={game.name} value={game.game_id} className="bg-[#111]">{game.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" size={18} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-white/30 font-bold ml-2">Player Account</label>
+                      <div className="relative">
+                        <select 
+                          value={adminForm.playerId}
+                          onChange={(e) => setAdminForm({...adminForm, playerId: e.target.value})}
+                          className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-[#D4AF37]/50 transition-all appearance-none text-white/90"
+                        >
+                          <option value="" disabled>Select Player...</option>
+                          {users.map(p => <option key={p.name} value={p.user_id} className="bg-[#111]">{p.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" size={18} />
+                      </div>
+                    </div>
+
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-white/30 font-bold ml-2">Chip Delta</label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setAdminForm({...adminForm, isLoss: !adminForm.isLoss})}
+                          className={`flex items-center justify-center w-14 h-14 rounded-2xl border transition-all ${
+                            adminForm.isLoss 
+                              ? "bg-red-500/20 border-red-500/50 text-red-500" 
+                              : "bg-green-500/20 border-green-500/50 text-green-500"
+                          }`}
+                        >
+                          {adminForm.isLoss ? <Minus size={20} /> : <Plus size={20} />}
+                        </button>
+                        <input 
+                          type="number"
+                          pattern="[0-9]*"
+                          inputMode="numeric"
+                          placeholder="Amount"
+                          value={adminForm.chipsChange}
+                          onChange={(e) => setAdminForm({...adminForm, chipsChange: Number(e.target.value.replace(/\D/g,''))})}
+                          className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-[#D4AF37]/50 transition-all text-white placeholder:text-white/10 font-mono text-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting || !adminForm.gameId|| !adminForm.playerId|| !adminForm.chipsChange}
+                    className={`w-full py-4 rounded-2xl font-bold text-lg active:scale-[0.98] transition-all shadow-xl ${
+                      adminForm.isLoss 
+                        ? "bg-gradient-to-r from-red-600 to-red-700 text-white shadow-red-900/20" 
+                        : "bg-gradient-to-r from-[#D4AF37] to-[#B8962E] text-black shadow-[#D4AF37]/10"
+                    }`}
+                  >
+                    {isSubmitting ? "Syncing..." : `Commit ${adminForm.isLoss ? 'Loss' : 'Win'}`}
+                  </button>
+                </form>
             </div>
+                  <section className="space-y-6">
+                  <div className="flex items-center gap-3 px-2">
+                    <History size={20} className="text-white/20" />
+                    <h3 className="text-sm font-bold text-white/30 uppercase tracking-[0.2em] mt-6">Transaction Audit Log</h3>
+                  </div>
+
+                  <div className="bg-[#111] border border-white/5 rounded-[2rem] overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-white/[0.02] text-[10px] uppercase tracking-widest text-white/40 font-black">
+                            <th className="px-6 py-4">Player</th>
+                            <th className="px-6 py-4">Game</th>
+                            <th className="px-6 py-4">Amount</th>
+                            <th className="px-6 py-4 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {adminGameResults.map((res) => (
+                            <tr key={res.result_id} className="hover:bg-white/[0.01] transition-colors group">
+                              <td className="px-6 py-4">
+                                <span className="font-semibold text-white/90">{res.player_name}</span>
+                              </td>
+                              <td className="px-6 py-4 text-white/40 text-xs">
+                                {res.game_name}
+                              </td>
+                              <td className="px-6 py-4 font-mono font-bold">
+                                <span className={res.chip_gain >= 0 ? 'text-green-500/80' : 'text-red-500/80'}>
+                                  {res.chip_gain > 0 ? '+' : ''}{res.chip_gain.toLocaleString()}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <button 
+                                  onClick={() => handleDeleteResult(res.result_id)}
+                                  className="p-2 text-white/10 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                                  title="Delete Transaction"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {adminGameResults.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-white/10 italic text-sm">
+                                No transactions found in current session.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
           </div>
         )}
       </main>

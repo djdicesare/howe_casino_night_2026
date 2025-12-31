@@ -110,7 +110,7 @@ export async function fetchAuditTrail(): Promise<AuditTrail[]> {
 export async function fetchPlayers(): Promise<Player[]> {
     const { data, error } = await supabaseClient
       .from('users')
-      .select('user_id, name, total_chips, is_admin')
+      .select('user_id, name, is_admin')
       .order('name', { ascending: true });
       
     if (error) {
@@ -140,7 +140,7 @@ export async function fetchAdminGameResults(): Promise<AdminGameResult[]>{
     const { data, error } = await supabaseClient
         .from('game_results_detailed')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
     if (error) {
         console.error('Error fetching detailed game results:', error);
@@ -148,4 +148,36 @@ export async function fetchAdminGameResults(): Promise<AdminGameResult[]>{
     }
 
     return (data || []) as AdminGameResult[];
+}
+
+export async function deleteGameResult(resultId: string): Promise<void> {
+    console.log('Deleting game result with ID:', resultId);
+    const { error } = await supabaseClient
+        .from('game_results')
+        .delete()
+        .eq('result_id', resultId);
+
+    if (error) {
+        console.error('Error deleting game result:', error);
+        throw error;
+    }
+}
+
+export async function addPlayerGameResult(playerId: string, gameId: number, chipsChange: number): Promise<void> {
+    const { error } = await supabaseClient
+        .from('game_results')
+        .insert([
+            {
+                player_id: playerId,
+                game_id: gameId,
+                chip_gain: chipsChange,
+            },
+        ]);
+
+    if (error) {
+        console.error('Error adding player game result:', error);
+        throw error;
+    }
+
+    console.log('Added player game result successfully', { playerId, gameId, chipsChange });
 }
